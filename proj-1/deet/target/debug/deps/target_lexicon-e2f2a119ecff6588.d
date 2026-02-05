@@ -1,0 +1,14 @@
+/home/ubuntu/cs110l/proj-1/deet/target/debug/deps/target_lexicon-e2f2a119ecff6588.d: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/host.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/parse_error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/targets.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/triple.rs /home/ubuntu/cs110l/proj-1/deet/target/debug/build/target-lexicon-14029d4bdc513b1a/out/host.rs
+
+/home/ubuntu/cs110l/proj-1/deet/target/debug/deps/libtarget_lexicon-e2f2a119ecff6588.rlib: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/host.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/parse_error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/targets.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/triple.rs /home/ubuntu/cs110l/proj-1/deet/target/debug/build/target-lexicon-14029d4bdc513b1a/out/host.rs
+
+/home/ubuntu/cs110l/proj-1/deet/target/debug/deps/libtarget_lexicon-e2f2a119ecff6588.rmeta: /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/lib.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/host.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/parse_error.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/targets.rs /home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/triple.rs /home/ubuntu/cs110l/proj-1/deet/target/debug/build/target-lexicon-14029d4bdc513b1a/out/host.rs
+
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/lib.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/host.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/parse_error.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/targets.rs:
+/home/ubuntu/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/target-lexicon-0.10.0/src/triple.rs:
+/home/ubuntu/cs110l/proj-1/deet/target/debug/build/target-lexicon-14029d4bdc513b1a/out/host.rs:
+
+# env-dep:OUT_DIR=/home/ubuntu/cs110l/proj-1/deet/target/debug/build/target-lexicon-14029d4bdc513b1a/out

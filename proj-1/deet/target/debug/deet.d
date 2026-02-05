@@ -1,0 +1,1 @@
+/home/ubuntu/cs110l/proj-1/deet/target/debug/deet: /home/ubuntu/cs110l/proj-1/deet/src/debugger.rs /home/ubuntu/cs110l/proj-1/deet/src/debugger_command.rs /home/ubuntu/cs110l/proj-1/deet/src/inferior.rs /home/ubuntu/cs110l/proj-1/deet/src/main.rs
