@@ -70,4 +70,10 @@ impl Inferior {
         let status = self.wait(None)?;
         Ok(status)
     }
+
+    pub fn kill(&mut self) {
+        self.child.kill().unwrap();
+        self.wait(None).unwrap();
+        println!("Killing inferior (pid {})", self.pid());
+    }
 }
