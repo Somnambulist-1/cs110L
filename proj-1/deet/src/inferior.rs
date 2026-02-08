@@ -3,6 +3,7 @@ use nix::sys::signal;
 use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::process::{Child, Command};
+use crate::dwarf_data::DwarfData;
 use std::os::unix::process::CommandExt;
 
 pub enum Status {
@@ -69,6 +70,32 @@ impl Inferior {
         ptrace::cont(self.pid(), None)?;
         let status = self.wait(None)?;
         Ok(status)
+    }
+
+    pub fn print_backtrace(&self, debug_data: &DwarfData) -> Result<(), nix::Error> {
+        let regs = ptrace::getregs(self.pid())?;
+        let mut _rip = regs.rip as usize;
+        let mut _rbp = regs.rbp as usize;
+        loop {
+            let _func = debug_data.get_function_from_addr(_rip);
+            let _line = debug_data.get_line_from_addr(_rip);
+            match (&_func, &_line) {
+                (Some(func), Some(line)) => println!("{} ({})", func, line),
+                (None, Some(line)) => println!("Unknown function ({})", line),
+                (Some(func), None) => println!("{} (Unknown line)", func),
+                (None, None) => println!("Unknown function (Unknown line)"),
+            }
+            if let Some(func) = _func {
+                if func == "main" {
+                    break;
+                }
+            } else {
+                break;
+            }
+            _rip = ptrace::read(self.pid(), (_rbp + 8) as ptrace::AddressType)? as usize;
+            _rbp = ptrace::read(self.pid(), _rbp as ptrace::AddressType)? as usize;
+        }
+        Ok(())
     }
 
     pub fn kill(&mut self) {
