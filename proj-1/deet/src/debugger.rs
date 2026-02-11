@@ -57,14 +57,17 @@ impl Debugger {
                         // to the Inferior object
                         match self.inferior.as_mut().unwrap().cont().unwrap() {
                             Status::Stopped(signal, rip) => {
-                                println!("Subprocess stopped at signal {}", signal);
+                                println!("Child stopped. (Signal {})", signal);
+                                if let Some(line) = self.debug_data.get_line_from_addr(rip) {
+                                    println!("Stopped at {}", line);
+                                }
                             }
                             Status::Exited(exit_code) => {
-                                println!("Subprocess exited with exit code {}", exit_code);
+                                println!("Child exited. (Exit code {})", exit_code);
                                 self.inferior = None;
                             }
                             Status::Signaled(signal) => {
-                                println!("Subprocess exited at singal {}", signal);
+                                println!("Child exited. (Signal {})", signal);
                                 self.inferior = None;
                             }
                         }
