@@ -6,6 +6,7 @@ use std::process::{Child, Command};
 use crate::dwarf_data::DwarfData;
 use std::mem::size_of;
 use std::os::unix::process::CommandExt;
+use std::collections::HashMap;
 
 pub enum Status {
     /// Indicates inferior stopped. Contains the signal that stopped the process, as well as the
@@ -40,7 +41,7 @@ pub struct Inferior {
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>, breakpoints: &Vec<usize>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &mut HashMap<usize, u8>) -> Option<Inferior> {
         // TODO: implement me!
         let mut cmd = Command::new(target);
         cmd.args(args);
@@ -49,8 +50,14 @@ impl Inferior {
         }
         let child = cmd.spawn().expect("Spawn error");
         let mut inferior = Inferior{ child: child };
-        for bp in breakpoints {
-            inferior.write_byte(*bp, 0xcc);
+        let bps = breakpoints.clone();
+        for bp in bps.keys() {
+            match inferior.write_byte(*bp, 0xcc) {
+                Ok(orig) => {
+                    breakpoints.insert(*bp, orig);
+                }
+                Err(_) => println!("Invalid breakpoint address {:#x}", *bp),
+            }
         }
         Some(inferior)
     }
@@ -74,10 +81,24 @@ impl Inferior {
         })
     }
 
-    pub fn cont(&self) -> Result<Status, nix::Error> {
+    pub fn cont(&mut self, breakpoints: &HashMap<usize, u8>) -> Result<Status, nix::Error> {
+        let mut regs = ptrace::getregs(self.pid())?;
+        let _rip = regs.rip as usize;
+        if let Some(orig_byte) = breakpoints.get(&(_rip - 1)) {
+            self.write_byte(_rip - 1, *orig_byte);
+            regs.rip = (_rip - 1) as u64;
+            ptrace::setregs(self.pid(), regs).unwrap();
+            ptrace::step(self.pid(), None).unwrap();
+            match self.wait(None).unwrap() {
+                Status::Stopped(_,_) => {
+                    self.write_byte(_rip - 1, 0xcc);
+                }
+                Status::Signaled(signal) => return Ok(Status::Signaled(signal)),
+                Status::Exited(exit_code) => return Ok(Status::Exited(exit_code)),
+            }
+        }
         ptrace::cont(self.pid(), None)?;
-        let status = self.wait(None)?;
-        Ok(status)
+        self.wait(None)
     }
 
     pub fn print_backtrace(&self, debug_data: &DwarfData) -> Result<(), nix::Error> {
@@ -112,7 +133,7 @@ impl Inferior {
         println!("Killing inferior (pid {})", self.pid());
     }
 
-    fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
+    pub fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
         let aligned_addr = align_addr_to_word(addr);
         let byte_offset = addr - aligned_addr;
         let word = ptrace::read(self.pid(), aligned_addr as ptrace::AddressType)? as u64;

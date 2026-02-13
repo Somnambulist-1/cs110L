@@ -1,6 +1,7 @@
 use crate::debugger_command::DebuggerCommand;
 use crate::inferior::{Status, Inferior};
 use crate::dwarf_data::{DwarfData, Error as DwarfError};
+use std::collections::HashMap;
 use rustyline::error::ReadlineError;
 use rustyline::Editor;
 
@@ -10,7 +11,7 @@ pub struct Debugger {
     readline: Editor<()>,
     inferior: Option<Inferior>,
     debug_data: DwarfData,
-    breakpoints: Vec<usize>,
+    breakpoints: HashMap<usize, u8>,
 }
 
 impl Debugger {
@@ -41,7 +42,7 @@ impl Debugger {
             readline,
             inferior: None,
             debug_data: debug_data,
-            breakpoints: Vec::new(),
+            breakpoints: HashMap::new(),
         }
     }
 
@@ -53,13 +54,13 @@ impl Debugger {
                         self.inferior.as_mut().unwrap().kill();
                         self.inferior = None;
                     }
-                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &mut self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         // TODO (milestone 1): make the inferior run
                         // You may use self.inferior.as_mut().unwrap() to get a mutable reference
                         // to the Inferior object
-                        match self.inferior.as_mut().unwrap().cont().unwrap() {
+                        match self.inferior.as_mut().unwrap().cont(&self.breakpoints).unwrap() {
                             Status::Stopped(signal, rip) => {
                                 println!("Child stopped. (Signal {})", signal);
                                 if let Some(line) = self.debug_data.get_line_from_addr(rip) {
@@ -83,7 +84,7 @@ impl Debugger {
                     if self.inferior.is_none() {
                         println!("No process running! Cannot execute continue instruction.");
                     } else {
-                        match self.inferior.as_mut().unwrap().cont().unwrap() {
+                        match self.inferior.as_mut().unwrap().cont(&self.breakpoints).unwrap() {
                             Status::Stopped(signal, rip) => {
                                 println!("Subprocess stopped at signal {}", signal);
                             }
@@ -104,9 +105,23 @@ impl Debugger {
                     }
                 }
                 DebuggerCommand::Breakpoint(breakpoint) => {
-                    if let Some(bp) = Self::parse_address(&breakpoint) {
-                        self.breakpoints.push(bp);
-                        println!("Set breakpoint {} at {}", self.breakpoints.len(), breakpoint);
+                    let bp;
+                    if let Some(addr) = Self::parse_address(&breakpoint[1..]) {
+                        bp = addr;
+                    } else {
+                        println!("Invalid address");
+                        continue;
+                    }
+                    if self.inferior.is_some() {
+                        if let Some(orig) = self.inferior.as_mut().unwrap().write_byte(bp, 0xcc).ok() {
+                            self.breakpoints.insert(bp, orig);
+                            println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp);
+                        } else {
+                            println!("Invalid breakpoint address!");
+                        }
+                    } else {
+                        self.breakpoints.insert(bp, 0);
+                        println!("Set breakpoint {} at {:#x}", self.breakpoints.len(), bp);
                     }
                 }
                 DebuggerCommand::Quit => {
