@@ -10,6 +10,7 @@ pub struct Debugger {
     readline: Editor<()>,
     inferior: Option<Inferior>,
     debug_data: DwarfData,
+    breakpoints: Vec<usize>,
 }
 
 impl Debugger {
@@ -31,6 +32,8 @@ impl Debugger {
         let mut readline = Editor::<()>::new();
         // Attempt to load history from ~/.deet_history if it exists
         let _ = readline.load_history(&history_path);
+        
+        debug_data.print();  // For testing
 
         Debugger {
             target: target.to_string(),
@@ -38,6 +41,7 @@ impl Debugger {
             readline,
             inferior: None,
             debug_data: debug_data,
+            breakpoints: Vec::new(),
         }
     }
 
@@ -49,7 +53,7 @@ impl Debugger {
                         self.inferior.as_mut().unwrap().kill();
                         self.inferior = None;
                     }
-                    if let Some(inferior) = Inferior::new(&self.target, &args) {
+                    if let Some(inferior) = Inferior::new(&self.target, &args, &self.breakpoints) {
                         // Create the inferior
                         self.inferior = Some(inferior);
                         // TODO (milestone 1): make the inferior run
@@ -97,6 +101,12 @@ impl Debugger {
                 DebuggerCommand::Backtrace => {
                     if self.inferior.is_some() {
                         self.inferior.as_mut().unwrap().print_backtrace(&self.debug_data);
+                    }
+                }
+                DebuggerCommand::Breakpoint(breakpoint) => {
+                    if let Some(bp) = Self::parse_address(&breakpoint) {
+                        self.breakpoints.push(bp);
+                        println!("Set breakpoint {} at {}", self.breakpoints.len(), breakpoint);
                     }
                 }
                 DebuggerCommand::Quit => {
@@ -149,5 +159,14 @@ impl Debugger {
                 }
             }
         }
+    }
+
+    fn parse_address(addr: &str) -> Option<usize> {
+        let addr_without_0x = if addr.to_lowercase().starts_with("0x") {
+            &addr[2..]
+        } else {
+            &addr
+        };
+        usize::from_str_radix(addr_without_0x, 16).ok()
     }
 }

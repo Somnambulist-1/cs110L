@@ -4,6 +4,7 @@ use nix::sys::wait::{waitpid, WaitPidFlag, WaitStatus};
 use nix::unistd::Pid;
 use std::process::{Child, Command};
 use crate::dwarf_data::DwarfData;
+use std::mem::size_of;
 use std::os::unix::process::CommandExt;
 
 pub enum Status {
@@ -28,6 +29,10 @@ fn child_traceme() -> Result<(), std::io::Error> {
     )))
 }
 
+fn align_addr_to_word(addr: usize) -> usize {
+    addr & (-(size_of::<usize>() as isize) as usize)
+}
+
 pub struct Inferior {
     child: Child,
 }
@@ -35,7 +40,7 @@ pub struct Inferior {
 impl Inferior {
     /// Attempts to start a new inferior process. Returns Some(Inferior) if successful, or None if
     /// an error is encountered.
-    pub fn new(target: &str, args: &Vec<String>) -> Option<Inferior> {
+    pub fn new(target: &str, args: &Vec<String>, breakpoints: &Vec<usize>) -> Option<Inferior> {
         // TODO: implement me!
         let mut cmd = Command::new(target);
         cmd.args(args);
@@ -44,6 +49,9 @@ impl Inferior {
         }
         let child = cmd.spawn().expect("Spawn error");
         let mut inferior = Inferior{ child: child };
+        for bp in breakpoints {
+            inferior.write_byte(*bp, 0xcc);
+        }
         Some(inferior)
     }
 
@@ -102,5 +110,20 @@ impl Inferior {
         self.child.kill().unwrap();
         self.wait(None).unwrap();
         println!("Killing inferior (pid {})", self.pid());
+    }
+
+    fn write_byte(&mut self, addr: usize, val: u8) -> Result<u8, nix::Error> {
+        let aligned_addr = align_addr_to_word(addr);
+        let byte_offset = addr - aligned_addr;
+        let word = ptrace::read(self.pid(), aligned_addr as ptrace::AddressType)? as u64;
+        let orig_byte = (word >> 8 * byte_offset) & 0xff;
+        let masked_word = word & !(0xff << 8 * byte_offset);
+        let updated_word = masked_word | ((val as u64) << 8 * byte_offset);
+        ptrace::write(
+            self.pid(),
+            aligned_addr as ptrace::AddressType,
+            updated_word as *mut std::ffi::c_void,
+        )?;
+        Ok(orig_byte as u8)
     }
 }
