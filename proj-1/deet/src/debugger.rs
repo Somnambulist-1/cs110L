@@ -106,10 +106,24 @@ impl Debugger {
                 }
                 DebuggerCommand::Breakpoint(breakpoint) => {
                     let bp;
-                    if let Some(addr) = Self::parse_address(&breakpoint[1..]) {
+                    if breakpoint.starts_with("*") {
+                        if let Some(addr) = Self::parse_address(&breakpoint[1..]) {
+                            bp = addr;
+                        } else {
+                            println!("Invalid address");
+                            continue;
+                        }
+                    } else if let Some(line) = usize::from_str_radix(&breakpoint, 10).ok() {
+                        if let Some(addr) = self.debug_data.get_addr_for_line(None, line) {
+                            bp = addr;
+                        } else {
+                            println!("Invalid line number");
+                            continue;
+                        }
+                    } else if let Some(addr) = self.debug_data.get_addr_for_function(None, &breakpoint) {
                         bp = addr;
                     } else {
-                        println!("Invalid address");
+                        println!("Usage: b|break|breakpoint line|func|*addr");
                         continue;
                     }
                     if self.inferior.is_some() {

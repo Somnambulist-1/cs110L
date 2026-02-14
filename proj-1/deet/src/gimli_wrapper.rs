@@ -58,15 +58,18 @@ pub fn load_file(object: &object::File, endian: gimli::RunTimeEndian) -> Result<
             // Update the variable list for formal params/variables
             match entry.tag() {
                 gimli::DW_TAG_compile_unit => {
-                    let name = if let Ok(Some(attr)) = entry.attr(gimli::DW_AT_name) {
-                        if let Ok(DebugValue::Str(name)) = get_attr_value(&attr, &unit, &dwarf) {
-                            name
-                        } else {
-                            "<unknown>".to_string()
-                        }
-                    } else {
-                        "<unknown>".to_string()
-                    };
+                    let name = entry
+                        .attr_value(gimli::DW_AT_name)
+                        .ok()
+                        .flatten()
+                        .and_then(|attr| {
+                            // 使用 dwarf.attr_string 将属性转为字符串
+                            // 它会自动处理 DW_FORM_strp, DW_FORM_string 等
+                            dwarf.attr_string(&unit, attr).ok()
+                        })
+                        .map(|r| r.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| "<unknown>".to_string());
+
                     compilation_units.push(File {
                         name,
                         global_variables: Vec::new(),
@@ -220,10 +223,20 @@ pub fn load_file(object: &object::File, endian: gimli::RunTimeEndian) -> Result<
                         );
                     }
 
-                    // Get the File
-                    let file = compilation_units
-                        .iter_mut()
-                        .find(|f| f.name == path.as_os_str().to_str().unwrap());
+                    let line_file_path = path.as_os_str().to_str().unwrap();
+
+                    let file = compilation_units.iter_mut().find(|f| {
+                        // 调试打印：看看两个名字到底长啥样
+                        //println!("Checking CU file: '{}' against Line file: '{}'", f.name, line_file_path);
+                        
+                        f.name == line_file_path || 
+                        f.name.ends_with(line_file_path) || 
+                        line_file_path.ends_with(&f.name)
+                    });
+
+                    if file.is_none() {
+                        println!("MISS: No match for line file path: {}", line_file_path);
+                    }
 
                     // Determine line/column. DWARF line/column is never 0, so we use that
                     // but other applications may want to display this differently.
