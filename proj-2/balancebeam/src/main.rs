@@ -4,12 +4,12 @@ mod response;
 use clap::Parser;
 use parking_lot::Mutex;
 use rand::{Rng, SeedableRng};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -63,6 +63,8 @@ struct ProxyState {
     upstream_addresses: Vec<String>,
     /// Upstream indices that failed a passive connect check
     dead_upstreams: Mutex<HashSet<usize>>,
+    /// Number of requests within a window
+    request_counts: Mutex<HashMap<String, VecDeque<Instant>>>,
 }
 
 fn main() {
@@ -98,6 +100,7 @@ fn main() {
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
         dead_upstreams: Mutex::new(HashSet::new()),
+        request_counts: Mutex::new(HashMap::new()),
     });
 
     let health_state = Arc::clone(&state);
@@ -204,6 +207,14 @@ fn handle_connection(mut client_conn: TcpStream, state: &ProxyState) {
                 continue;
             }
         };
+
+        // rate limiting
+        if is_rate_limited(state, &client_ip) {
+            let response = response::make_http_error(http::StatusCode::TOO_MANY_REQUESTS);
+            send_response(&mut client_conn, &response);
+            return;
+        }
+
         log::info!(
             "{} -> {}: {}",
             client_ip,
@@ -245,9 +256,40 @@ fn handle_connection(mut client_conn: TcpStream, state: &ProxyState) {
     }
 }
 
+fn is_rate_limited(state: &ProxyState, client_ip: &str) -> bool {
+    if state.max_requests_per_minute == 0 {
+        return false;
+    }
+
+    let now = Instant::now();
+    let window = Duration::from_secs(60);
+
+    let mut request_counts = state.request_counts.lock();
+    let timestamps = request_counts
+        .entry(client_ip.to_string())
+        .or_insert_with(VecDeque::new);
+    
+    while let Some(timestamp) = timestamps.front() {
+        if now.duration_since(*timestamp) > window {
+            timestamps.pop_front();
+        } else {
+            break;
+        }
+    }
+
+    if timestamps.len() >= state.max_requests_per_minute {
+        return true;
+    }
+
+    timestamps.push_back(now);
+    false
+}
+
 fn active_health_check(state: Arc<ProxyState>) {
     loop {
-        thread::sleep(Duration::from_secs(state.active_health_check_interval as u64));
+        thread::sleep(Duration::from_secs(
+            state.active_health_check_interval as u64,
+        ));
 
         for upstream_idx in 0..state.upstream_addresses.len() {
             let upstream_ip = &state.upstream_addresses[upstream_idx];
