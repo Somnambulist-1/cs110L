@@ -181,7 +181,6 @@ fn read_body(
 /// This function reads and returns an HTTP request from a stream, returning an Error if the client
 /// closes the connection prematurely or sends an invalid request.
 ///
-/// You will need to modify this function in Milestone 2.
 pub fn read_from_stream(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>, Error> {
     // Read headers
     let mut request = read_headers(stream)?;
@@ -198,7 +197,6 @@ pub fn read_from_stream(stream: &mut TcpStream) -> Result<http::Request<Vec<u8>>
 
 /// This function serializes a request to bytes and writes those bytes to the provided stream.
 ///
-/// You will need to modify this function in Milestone 2.
 pub fn write_to_stream(
     request: &http::Request<Vec<u8>>,
     stream: &mut TcpStream,

@@ -7,6 +7,9 @@ use rand::{Rng, SeedableRng};
 use std::collections::HashSet;
 use std::io;
 use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
+use std::thread;
+use std::time::Duration;
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -89,13 +92,19 @@ fn main() {
     log::info!("Listening for requests on {}", options.bind);
 
     // Handle incoming connections
-    let state = ProxyState {
+    let state = Arc::new(ProxyState {
         upstream_addresses: options.upstream,
         active_health_check_interval: options.active_health_check_interval,
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
         dead_upstreams: Mutex::new(HashSet::new()),
-    };
+    });
+
+    let health_state = Arc::clone(&state);
+    thread::spawn(move || {
+        active_health_check(health_state);
+    });
+
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
             // Handle the connection!
@@ -234,4 +243,48 @@ fn handle_connection(mut client_conn: TcpStream, state: &ProxyState) {
         send_response(&mut client_conn, &response);
         log::debug!("Forwarded response to client");
     }
+}
+
+fn active_health_check(state: Arc<ProxyState>) {
+    loop {
+        thread::sleep(Duration::from_secs(state.active_health_check_interval as u64));
+
+        for upstream_idx in 0..state.upstream_addresses.len() {
+            let upstream_ip = &state.upstream_addresses[upstream_idx];
+
+            let is_healthy = check_upstream_health(upstream_ip, &state.active_health_check_path);
+
+            let mut dead_upstreams = state.dead_upstreams.lock();
+            if is_healthy {
+                dead_upstreams.remove(&upstream_idx);
+            } else {
+                dead_upstreams.insert(upstream_idx);
+            }
+        }
+    }
+}
+
+fn check_upstream_health(upstream_ip: &str, path: &str) -> bool {
+    let mut stream = match TcpStream::connect(upstream_ip) {
+        Ok(stream) => stream,
+        Err(_) => return false,
+    };
+
+    let request = http::Request::builder()
+        .method(http::Method::GET)
+        .uri(path)
+        .header("host", upstream_ip)
+        .body(Vec::new())
+        .unwrap();
+
+    if request::write_to_stream(&request, &mut stream).is_err() {
+        return false;
+    }
+
+    let response = match response::read_from_stream(&mut stream, request.method()) {
+        Ok(response) => response,
+        Err(_) => return false,
+    };
+
+    response.status() == http::StatusCode::OK
 }
