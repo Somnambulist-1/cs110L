@@ -2,7 +2,7 @@ mod request;
 mod response;
 
 use clap::Parser;
-use parking_lot::Mutex;
+use parking_lot::RwLock;
 use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::io;
@@ -10,6 +10,9 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
+use threadpool::ThreadPool;
+
+const NUM_WORKER_THREADS: usize = 8;
 
 /// Contains information parsed from the command-line invocation of balancebeam. The Clap macros
 /// provide a fancy way to automatically construct a command-line argument parser.
@@ -62,9 +65,9 @@ struct ProxyState {
     /// Addresses of servers that we are proxying to
     upstream_addresses: Vec<String>,
     /// Upstream indices that failed a passive connect check
-    dead_upstreams: Mutex<HashSet<usize>>,
+    dead_upstreams: RwLock<HashSet<usize>>,
     /// Number of requests within a window
-    request_counts: Mutex<HashMap<String, VecDeque<Instant>>>,
+    request_counts: RwLock<HashMap<String, VecDeque<Instant>>>,
 }
 
 fn main() {
@@ -99,8 +102,8 @@ fn main() {
         active_health_check_interval: options.active_health_check_interval,
         active_health_check_path: options.active_health_check_path,
         max_requests_per_minute: options.max_requests_per_minute,
-        dead_upstreams: Mutex::new(HashSet::new()),
-        request_counts: Mutex::new(HashMap::new()),
+        dead_upstreams: RwLock::new(HashSet::new()),
+        request_counts: RwLock::new(HashMap::new()),
     });
 
     let health_state = Arc::clone(&state);
@@ -108,10 +111,13 @@ fn main() {
         active_health_check(health_state);
     });
 
+    let pool = ThreadPool::new(NUM_WORKER_THREADS);
     for stream in listener.incoming() {
         if let Ok(stream) = stream {
-            // Handle the connection!
-            handle_connection(stream, &state);
+            let connection_state = Arc::clone(&state);
+            pool.execute(move || {
+                handle_connection(stream, &connection_state);
+            });
         }
     }
 }
@@ -123,7 +129,7 @@ fn connect_to_upstream(state: &ProxyState) -> Result<TcpStream, std::io::Error> 
 
     loop {
         let candidates: Vec<usize> = {
-            let dead_upstreams = state.dead_upstreams.lock();
+            let dead_upstreams = state.dead_upstreams.read();
             (0..state.upstream_addresses.len())
                 .filter(|idx| !dead_upstreams.contains(idx) && !tried_upstreams.contains(idx))
                 .collect()
@@ -142,7 +148,7 @@ fn connect_to_upstream(state: &ProxyState) -> Result<TcpStream, std::io::Error> 
             Ok(stream) => return Ok(stream),
             Err(err) => {
                 log::error!("Failed to connect to upstream {}: {}", upstream_ip, err);
-                state.dead_upstreams.lock().insert(upstream_idx);
+                state.dead_upstreams.write().insert(upstream_idx);
                 last_error = Some(err);
             }
         }
@@ -264,11 +270,11 @@ fn is_rate_limited(state: &ProxyState, client_ip: &str) -> bool {
     let now = Instant::now();
     let window = Duration::from_secs(60);
 
-    let mut request_counts = state.request_counts.lock();
+    let mut request_counts = state.request_counts.write();
     let timestamps = request_counts
         .entry(client_ip.to_string())
         .or_insert_with(VecDeque::new);
-    
+
     while let Some(timestamp) = timestamps.front() {
         if now.duration_since(*timestamp) > window {
             timestamps.pop_front();
@@ -296,7 +302,7 @@ fn active_health_check(state: Arc<ProxyState>) {
 
             let is_healthy = check_upstream_health(upstream_ip, &state.active_health_check_path);
 
-            let mut dead_upstreams = state.dead_upstreams.lock();
+            let mut dead_upstreams = state.dead_upstreams.write();
             if is_healthy {
                 dead_upstreams.remove(&upstream_idx);
             } else {
